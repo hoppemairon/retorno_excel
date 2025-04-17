@@ -12,7 +12,7 @@ def ler_cnab240_segmento_j(conteudo_arquivo):
 
     for linha in conteudo_arquivo.splitlines():
         if len(linha) >= 150 and linha[13] == 'J':
-            nome_favorecido = linha[62:90].strip()
+            nome_favorecido = linha[61:90].strip()
             data_pagamento = linha[91:100]
             valor = linha[101:115].strip()
 
