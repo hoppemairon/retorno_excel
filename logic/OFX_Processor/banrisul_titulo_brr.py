@@ -29,12 +29,25 @@ class BanrisulTituloBRRProcessor:
             Dict com estatísticas e transações detectadas
         """
         # Filtros para detectar transações genéricas do Banrisul
+        # Verificar qual coluna de banco está disponível
+        banco_col = None
+        for col in ['banco_nome', 'banco_nome_sistema', 'banco']:
+            if col in df_ofx.columns:
+                banco_col = col
+                break
+        
+        if banco_col is None:
+            # Se não encontrar coluna de banco, criar uma vazia
+            df_ofx = df_ofx.copy()
+            df_ofx['banco_temp'] = 'BANRISUL'  # Assumir que é Banrisul se não tiver info
+            banco_col = 'banco_temp'
+        
         filtros = (
             (df_ofx['descricao'].str.contains('PAGAMENTO TITULO BRR', case=False, na=False)) |
             (df_ofx['descricao'].str.contains('PAGAMENTO TIT BRR', case=False, na=False)) |
             (df_ofx['descricao'].str.contains('PAG TITULO BRR', case=False, na=False))
         ) & (
-            df_ofx['banco_nome'].str.contains('BANRISUL', case=False, na=False)
+            df_ofx[banco_col].str.contains('BANRISUL', case=False, na=False)
         )
         
         transacoes_genericas = df_ofx[filtros].copy()
@@ -243,7 +256,7 @@ class BanrisulTituloBRRProcessor:
                     'data_ofx_original': transacao_base['data'],
                     'valor_ofx_original': transacao_base['valor_absoluto'],
                     'descricao_ofx_original': transacao_base['descricao'],
-                    'banco_nome': transacao_base['banco_nome'],
+                    'banco_nome': transacao_base.get('banco_nome') or transacao_base.get('banco_nome_sistema') or transacao_base.get('banco', 'BANRISUL'),
                     
                     # Dados detalhados do arquivo de retorno
                     'data': pagamento.get('data', transacao_base['data']),
