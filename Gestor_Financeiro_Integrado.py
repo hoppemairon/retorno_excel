@@ -938,7 +938,20 @@ def render_step_6_processar_titulo_brr():
                     # PRIMEIRO: Detectar transações TITULO BRR nas movimentações analisadas
                     if hasattr(st.session_state, 'movimentacoes_analisadas'):
                         # Converter movimentações para DataFrame para o processador
-                        df_temp = pd.DataFrame(titulo_brr_transacoes)
+                        # Mapear campos para compatibilidade
+                        df_temp_data = []
+                        for mov in titulo_brr_transacoes:
+                            row = {
+                                'descricao': mov.get('descricao', ''),
+                                'valor_absoluto': mov.get('valor', 0),  # Mapear valor -> valor_absoluto
+                                'valor': mov.get('valor', 0),  # Manter ambos por compatibilidade
+                                'data': mov.get('data', ''),
+                                'banco_nome': mov.get('banco', 'BANRISUL'),
+                                'banco': mov.get('banco', 'BANRISUL')
+                            }
+                            df_temp_data.append(row)
+                        
+                        df_temp = pd.DataFrame(df_temp_data)
                         stats = processor.detectar_transacoes_genericas(df_temp)
                         st.info(f"🔍 Detectadas {stats['transacoes_genericas']} transações TITULO BRR para matching")
                     

@@ -57,7 +57,14 @@ class BanrisulTituloBRRProcessor:
         total_transacoes = len(df_ofx)
         total_genericas = len(transacoes_genericas)
         total_normais = len(transacoes_normais)
-        valor_total_generico = transacoes_genericas['valor_absoluto'].sum() if total_genericas > 0 else 0
+        # Verificar qual coluna de valor está disponível
+        valor_col = None
+        for col in ['valor_absoluto', 'valor', 'amount']:
+            if col in transacoes_genericas.columns:
+                valor_col = col
+                break
+        
+        valor_total_generico = transacoes_genericas[valor_col].sum() if total_genericas > 0 and valor_col else 0
         
         self.transacoes_genericas = transacoes_genericas.to_dict('records')
         
@@ -199,7 +206,10 @@ class BanrisulTituloBRRProcessor:
                 else:
                     data_ofx = transacao_ofx['data']
                 
-                valor_ofx = float(transacao_ofx.get('valor_absoluto', 0))
+                # Obter valor da transação de forma flexível
+                valor_ofx = float(transacao_ofx.get('valor_absoluto', 0) or 
+                                transacao_ofx.get('valor', 0) or 
+                                transacao_ofx.get('amount', 0))
                 
                 # Buscar em todos os arquivos de retorno
                 for nome_arquivo, dados_arquivo in self.arquivos_retorno.items():
@@ -254,7 +264,7 @@ class BanrisulTituloBRRProcessor:
                 transacao_detalhada = {
                     # Dados da transação OFX original
                     'data_ofx_original': transacao_base['data'],
-                    'valor_ofx_original': transacao_base['valor_absoluto'],
+                    'valor_ofx_original': transacao_base.get('valor_absoluto', 0) or transacao_base.get('valor', 0) or transacao_base.get('amount', 0),
                     'descricao_ofx_original': transacao_base['descricao'],
                     'banco_nome': transacao_base.get('banco_nome') or transacao_base.get('banco_nome_sistema') or transacao_base.get('banco', 'BANRISUL'),
                     
