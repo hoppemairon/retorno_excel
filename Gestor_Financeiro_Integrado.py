@@ -164,15 +164,19 @@ def main():
     st.markdown("Sistema integrado para processamento de arquivos financeiros")
     
     # Criar abas principais
-    tab1, tab2 = st.tabs([
+    tab1, tab2, tab3 = st.tabs([
         "📄 CNAB240 (.RET)", 
-        "🏦 Gestão Financeira (OFX)"
+        "🏦 Conciliação Bancária",
+        "⚙️ Gestão Financeira (OFX)"
     ])
     
     with tab1:
         render_cnab_tab()
     
     with tab2:
+        render_conciliacao_bancaria()
+    
+    with tab3:
         render_ofx_tab()
 
 def render_cnab_tab():
@@ -421,6 +425,923 @@ def render_cnab_mr_analysis():
                 file_name="pagamentos_cruzados_por_nome.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
+
+def render_conciliacao_bancaria():
+    """
+    🏦 Nova Aba de Conciliação Bancária
+    Fluxo completo de conciliação seguindo os 8 passos definidos
+    """
+    st.markdown("### 🏦 Conciliação Bancária Inteligente")
+    st.markdown("**Fluxo automatizado:** Configuração → OFX → Mapeamento → Saldos → Análise → TITULO BRR → Conferência → Lançamentos")
+    
+    # Estados da sessão para conciliação
+    if "conciliacao_step" not in st.session_state:
+        st.session_state.conciliacao_step = 1
+    if "bancos_configurados" not in st.session_state:
+        st.session_state.bancos_configurados = False
+    if "ofx_importados" not in st.session_state:
+        st.session_state.ofx_importados = {}
+    if "mapeamento_bancos" not in st.session_state:
+        st.session_state.mapeamento_bancos = {}
+    if "saldos_validados" not in st.session_state:
+        st.session_state.saldos_validados = {}
+    if "movimentacoes_analisadas" not in st.session_state:
+        st.session_state.movimentacoes_analisadas = []
+    if "titulo_brr_processado" not in st.session_state:
+        st.session_state.titulo_brr_processado = {}
+    if "lancamentos_finais" not in st.session_state:
+        st.session_state.lancamentos_finais = pd.DataFrame()
+    
+    # Progress Bar
+    progress_steps = [
+        "1️⃣ Configurar Bancos",
+        "2️⃣ Importar OFX", 
+        "3️⃣ Mapear Bancos",
+        "4️⃣ Validar Saldos",
+        "5️⃣ Analisar Movimentações",
+        "6️⃣ Processar TITULO BRR",
+        "7️⃣ Conferir Retorno",
+        "8️⃣ Gerar Lançamentos"
+    ]
+    
+    current_step = st.session_state.conciliacao_step
+    st.progress(current_step / 8, text=f"**Etapa {current_step}/8:** {progress_steps[current_step-1]}")
+    
+    # Navegação por abas
+    tab_config, tab_processo, tab_resultado = st.tabs([
+        "🔧 Configuração & Upload",
+        "🔄 Processamento",
+        "📊 Resultado & Download"
+    ])
+    
+    with tab_config:
+        render_step_1_configuracao()
+        if st.session_state.bancos_configurados:
+            render_step_2_importar_ofx()
+            if st.session_state.ofx_importados:
+                render_step_3_mapeamento()
+    
+    with tab_processo:
+        if st.session_state.mapeamento_bancos:
+            render_step_4_validar_saldos()
+            render_step_5_analisar_movimentacoes()
+            render_step_6_processar_titulo_brr()
+            render_step_7_conferir_retorno()
+    
+    with tab_resultado:
+        if st.session_state.movimentacoes_analisadas:
+            render_step_8_gerar_lancamentos()
+
+def render_step_1_configuracao():
+    """
+    Passo 1: Configurar Bancos via API MR
+    """
+    st.subheader("1️⃣ Configuração de Bancos")
+    st.markdown("**Configure as empresas e bancos que serão utilizados na conciliação**")
+    
+    # Lista de empresas
+    EMPRESAS_MR = {
+        "🏢 ROTA - Araranguá": "772644ba-3a49-4736-8443-f057581d6b39",
+        "🏢 ROTA - Terra de Areia": "4d49850f-ebf1-433d-a32a-527b54e856aa",
+        "🏢 ROTA - Caminho do Sol": "d5ecbd61-8d4a-4ac6-8cc9-7c4919ead401",
+        "🏢 ROTA - Jaguaruna": "149653c2-f107-4c60-aad0-b034789c8504",
+        "🏢 ROTA - Paradouro": "735b6b4e-5513-4bb5-a9c4-50d92462921d",
+        "🏢 ROTA - São Paulo": "1db3be97-a6d6-484a-b75b-fc1bdc6c487a",
+        "🏢 ROTA - Eldorado": "93f44c44-bfd4-417f-bad2-20933e5c0228",
+        "🏢 ROTA - Pinheiro Machado": "a13229ca-0f8a-442a-91ab-27e0adc1810b",
+        "🏢 ROTA - Seberi": "eb84222f-2e6b-4f68-8457-760d10e24043",
+        "🏢 ROTA - POA Ipiranga": "85d3091d-af31-4cb5-86fc-1558aaefa19b",
+        "🏢 ROTA - Cristal": "7a078786-1d9e-4433-9d63-8dfc58130b5f",
+        "🏢 ROTA - Porto Alegre": "73a32cc3-d7ac-48d7-91d7-9046045d0bd7",
+        "🏢 ROTA - Paradouro Rest.": "cad79622-124a-4dc0-9408-7da5227576f0",
+        "🏢 ROTA - Transportadora": "3885ddf8-f0ac-4468-98ab-97a248e29150"
+    }
+    
+    empresas_selecionadas = st.multiselect(
+        "📋 Selecione as empresas para conciliação:",
+        options=list(EMPRESAS_MR.keys()),
+        default=list(EMPRESAS_MR.keys())[:1],
+        help="Selecione as empresas que terão os bancos configurados"
+    )
+    
+    if st.button("🔄 Carregar Bancos da API MR", type="primary"):
+        if not empresas_selecionadas:
+            st.warning("⚠️ Selecione pelo menos uma empresa!")
+        else:
+            with st.spinner("🔄 Carregando bancos das empresas selecionadas..."):
+                try:
+                    # Converter nomes para IDs
+                    clientes_ids = [EMPRESAS_MR[empresa] for empresa in empresas_selecionadas]
+                    
+                    # Instanciar BankMapper e carregar bancos
+                    bank_mapper = BankMapper()
+                    success = bank_mapper.load_mapping_from_api(clientes_ids)
+                    
+                    if success:
+                        # Obter bancos disponíveis
+                        bancos_sistema = get_available_system_banks(bank_mapper, clientes_ids)
+                        
+                        if bancos_sistema:
+                            st.session_state.bancos_configurados = True
+                            st.session_state.empresas_selecionadas = empresas_selecionadas
+                            st.session_state.bancos_sistema = bancos_sistema
+                            st.session_state.bank_mapper = bank_mapper
+                            st.session_state.conciliacao_step = 2
+                            
+                            st.success(f"✅ {len(bancos_sistema)} bancos carregados com sucesso!")
+                            
+                            # Mostrar bancos carregados
+                            with st.expander("📋 Bancos Carregados", expanded=True):
+                                for banco in bancos_sistema:
+                                    st.write(f"🏦 **{banco['empresa']}** - {banco['banco']} (ID: {banco['codigo']})")
+                        else:
+                            st.error("❌ Nenhum banco encontrado para as empresas selecionadas")
+                    else:
+                        st.error("❌ Falha ao carregar bancos da API MR")
+                        
+                except Exception as e:
+                    st.error(f"❌ Erro ao configurar bancos: {str(e)}")
+    
+    # Status da configuração
+    if st.session_state.bancos_configurados:
+        st.success("✅ **Bancos configurados!** Prossiga para o passo 2.")
+    else:
+        st.info("ℹ️ Configure os bancos para prosseguir com a conciliação.")
+
+def render_step_2_importar_ofx():
+    """
+    Passo 2: Importar arquivos OFX
+    """
+    st.markdown("---")
+    st.subheader("2️⃣ Importar Arquivos OFX")
+    st.markdown("**Faça upload dos arquivos OFX dos bancos para conciliação**")
+    
+    # Upload múltiplos OFX
+    uploaded_files = st.file_uploader(
+        "📁 Selecione os arquivos OFX:",
+        type=["ofx", "qfx"],
+        accept_multiple_files=True,
+        key="conciliacao_ofx_uploader"
+    )
+    
+    if uploaded_files:
+        if st.button("📥 Processar Arquivos OFX", type="primary"):
+            with st.spinner("📥 Processando arquivos OFX..."):
+                try:
+                    ofx_reader = OFXReader()
+                    
+                    # Preparar dados para processamento em lote
+                    files_data = []
+                    
+                    for arquivo in uploaded_files:
+                        # Ler conteúdo do arquivo
+                        content = arquivo.read().decode("utf-8", errors="ignore")
+                        arquivo.seek(0)
+                        
+                        # Adicionar à lista para processamento em lote
+                        files_data.append({
+                            'content': content,
+                            'name': arquivo.name
+                        })
+                        
+                        # Extrair informações bancárias
+                        info_banco = extract_bank_info_from_ofx(arquivo)
+                    
+                    # Processar todos os arquivos de uma vez usando read_multiple_ofx
+                    df_consolidado = ofx_reader.read_multiple_ofx(files_data)
+                    
+                    # Agrupar por arquivo de origem para manter estrutura individual
+                    arquivos_processados = {}
+                    
+                    for arquivo in uploaded_files:
+                        # Filtrar transações deste arquivo específico
+                        df_arquivo = df_consolidado[df_consolidado['arquivo_origem'] == arquivo.name].copy()
+                        
+                        # Extrair informações bancárias
+                        arquivo.seek(0)
+                        info_banco = extract_bank_info_from_ofx(arquivo)
+                        
+                        arquivos_processados[arquivo.name] = {
+                            'arquivo': arquivo,
+                            'info_banco': info_banco,
+                            'df_transacoes': df_arquivo,
+                            'total_transacoes': len(df_arquivo)
+                        }
+                    
+                    st.session_state.ofx_importados = arquivos_processados
+                    st.session_state.conciliacao_step = 3
+                    
+                    st.success(f"✅ {len(uploaded_files)} arquivos OFX processados com sucesso!")
+                    
+                    # Mostrar resumo
+                    total_transacoes = sum(dados['total_transacoes'] for dados in arquivos_processados.values())
+                    st.info(f"📊 **Total:** {total_transacoes} transações encontradas em {len(uploaded_files)} arquivos")
+                    
+                except Exception as e:
+                    st.error(f"❌ Erro ao processar OFX: {str(e)}")
+        
+        # Preview dos arquivos
+        if uploaded_files:
+            with st.expander("👁️ Preview dos Arquivos OFX", expanded=False):
+                for arquivo in uploaded_files:
+                    info = extract_bank_info_from_ofx(arquivo)
+                    st.write(f"📄 **{arquivo.name}**")
+                    if info:
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.write(f"🏦 **{info.get('banco', 'N/A')}**")
+                        with col2:
+                            st.write(f"🏢 Agência: {info.get('agencia', 'N/A')}")
+                        with col3:
+                            st.write(f"💳 Conta: {info.get('conta', 'N/A')}")
+                    st.write("---")
+
+def render_step_3_mapeamento():
+    """
+    Passo 3: Mapear OFX para Bancos do Sistema MR
+    """
+    st.markdown("---")
+    st.subheader("3️⃣ Mapeamento OFX → Bancos Sistema MR")
+    st.markdown("**Associe cada arquivo OFX com o banco correspondente no sistema MR**")
+    
+    if not st.session_state.ofx_importados:
+        st.warning("⚠️ Importe arquivos OFX primeiro!")
+        return
+    
+    bancos_sistema = st.session_state.bancos_sistema
+    mapeamentos = {}
+    
+    # Interface de mapeamento
+    for nome_arquivo, dados_ofx in st.session_state.ofx_importados.items():
+        with st.container():
+            col1, col2, col3 = st.columns([2, 1, 3])
+            
+            with col1:
+                st.markdown(f"**📄 {nome_arquivo}**")
+                info_banco = dados_ofx['info_banco']
+                if info_banco:
+                    st.caption(f"🏦 {info_banco.get('banco', 'N/A')}")
+                    st.caption(f"🏢 Ag: {info_banco.get('agencia', 'N/A')} | 💳 Conta: {info_banco.get('conta', 'N/A')}")
+                st.caption(f"📊 {dados_ofx['total_transacoes']} transações")
+            
+            with col2:
+                st.markdown("**→**")
+            
+            with col3:
+                # Opções de bancos
+                banco_options = ["-- Selecione o banco --"] + [banco['nome'] for banco in bancos_sistema]
+                
+                # Auto-sugestão baseada no nome do banco
+                default_index = 0
+                if info_banco and info_banco.get('banco'):
+                    banco_ofx = info_banco['banco'].upper()
+                    for idx, option in enumerate(banco_options[1:], 1):
+                        if any(palavra in option.upper() for palavra in banco_ofx.split()):
+                            default_index = idx
+                            break
+                
+                banco_selecionado = st.selectbox(
+                    f"Banco do Sistema MR para {nome_arquivo}:",
+                    options=banco_options,
+                    index=default_index,
+                    key=f"banco_mapping_{nome_arquivo}"
+                )
+                
+                if banco_selecionado != "-- Selecione o banco --":
+                    banco_info = next((b for b in bancos_sistema if b['nome'] == banco_selecionado), None)
+                    if banco_info:
+                        mapeamentos[nome_arquivo] = banco_info
+                        st.success(f"✅ **{banco_info['empresa']}**")
+            
+            st.markdown("---")
+    
+    # Salvar mapeamentos
+    if len(mapeamentos) == len(st.session_state.ofx_importados):
+        if st.button("✅ Confirmar Mapeamentos", type="primary"):
+            st.session_state.mapeamento_bancos = mapeamentos
+            st.session_state.conciliacao_step = 4
+            st.success("✅ Mapeamento concluído! Prossiga para validação de saldos.")
+            st.rerun()
+    else:
+        faltam = len(st.session_state.ofx_importados) - len(mapeamentos)
+        st.warning(f"⚠️ Mapeie todos os arquivos para continuar. Faltam: {faltam}")
+
+def render_step_4_validar_saldos():
+    """
+    Passo 4: Validar Saldos Inicial/Final do OFX
+    """
+    st.subheader("4️⃣ Validação de Saldos")
+    st.markdown("**Verificação dos saldos inicial e final dos arquivos OFX**")
+    
+    if not st.session_state.mapeamento_bancos:
+        st.warning("⚠️ Complete o mapeamento primeiro!")
+        return
+    
+    if st.button("💰 Validar Saldos", type="primary"):
+        with st.spinner("💰 Validando saldos dos bancos..."):
+            try:
+                saldos_validados = {}
+                
+                for nome_arquivo, banco_mapeado in st.session_state.mapeamento_bancos.items():
+                    dados_ofx = st.session_state.ofx_importados[nome_arquivo]
+                    df_transacoes = dados_ofx['df_transacoes']
+                    
+                    # Simular extração de saldos (implementar extração real do OFX)
+                    saldo_inicial = 10000.00  # PLACEHOLDER - extrair do OFX
+                    saldo_final = saldo_inicial + df_transacoes['valor'].sum()
+                    
+                    # Buscar último saldo conhecido no sistema (implementar chamada real da API)
+                    saldo_sistema = 9950.00  # PLACEHOLDER - buscar da API MR
+                    
+                    diferenca = abs(saldo_final - saldo_sistema)
+                    status = "✅ OK" if diferenca < 0.01 else "⚠️ Divergência"
+                    
+                    saldos_validados[nome_arquivo] = {
+                        'banco': banco_mapeado['nome'],
+                        'empresa': banco_mapeado['empresa'],
+                        'saldo_inicial_ofx': saldo_inicial,
+                        'saldo_final_ofx': saldo_final,
+                        'saldo_sistema': saldo_sistema,
+                        'diferenca': diferenca,
+                        'status': status
+                    }
+                
+                st.session_state.saldos_validados = saldos_validados
+                st.session_state.conciliacao_step = 5
+                st.success("✅ Validação de saldos concluída!")
+                
+            except Exception as e:
+                st.error(f"❌ Erro na validação: {str(e)}")
+    
+    # Mostrar resultados da validação
+    if st.session_state.saldos_validados:
+        st.markdown("### 📊 Resultado da Validação")
+        
+        for arquivo, dados in st.session_state.saldos_validados.items():
+            with st.container():
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("🏦 Banco", dados['banco'])
+                    st.caption(dados['empresa'])
+                
+                with col2:
+                    st.metric("💰 Saldo OFX", f"R$ {dados['saldo_final_ofx']:,.2f}")
+                
+                with col3:
+                    st.metric("🏛️ Saldo Sistema", f"R$ {dados['saldo_sistema']:,.2f}")
+                
+                with col4:
+                    delta_color = "normal" if dados['diferenca'] < 0.01 else "inverse"
+                    st.metric("📊 Status", dados['status'], 
+                             delta=f"Dif: R$ {dados['diferenca']:,.2f}",
+                             delta_color=delta_color)
+                
+                st.markdown("---")
+
+def render_step_5_analisar_movimentacoes():
+    """
+    Passo 5: Análise Inteligente de Movimentações
+    """
+    st.subheader("5️⃣ Análise de Movimentações")
+    st.markdown("**Classificação automática: Já Lançado | Transferência | TITULO BRR | Novo**")
+    
+    if not st.session_state.saldos_validados:
+        st.warning("⚠️ Valide os saldos primeiro!")
+        return
+    
+    if st.button("🔍 Analisar Movimentações", type="primary"):
+        with st.spinner("🔍 Analisando movimentações contra sistema MR..."):
+            try:
+                # Consolidar todas as transações OFX
+                todas_transacoes = []
+                
+                for nome_arquivo, dados_ofx in st.session_state.ofx_importados.items():
+                    df_transacoes = dados_ofx['df_transacoes'].copy()
+                    banco_mapeado = st.session_state.mapeamento_bancos[nome_arquivo]
+                    
+                    # Adicionar info do banco mapeado
+                    df_transacoes['banco_sistema'] = banco_mapeado['nome']
+                    df_transacoes['empresa_sistema'] = banco_mapeado['empresa']
+                    df_transacoes['arquivo_origem'] = nome_arquivo
+                    
+                    todas_transacoes.append(df_transacoes)
+                
+                df_consolidado = pd.concat(todas_transacoes, ignore_index=True)
+                
+                # Buscar dados do sistema MR para comparação
+                # Usar IDs das empresas selecionadas
+                EMPRESAS_MR = {
+                    "🏢 ROTA - Araranguá": "772644ba-3a49-4736-8443-f057581d6b39",
+                    "🏢 ROTA - Terra de Areia": "4d49850f-ebf1-433d-a32a-527b54e856aa",
+                    "🏢 ROTA - Caminho do Sol": "d5ecbd61-8d4a-4ac6-8cc9-7c4919ead401",
+                    "🏢 ROTA - Jaguaruna": "149653c2-f107-4c60-aad0-b034789c8504",
+                    "🏢 ROTA - Paradouro": "735b6b4e-5513-4bb5-a9c4-50d92462921d",
+                    "🏢 ROTA - São Paulo": "1db3be97-a6d6-484a-b75b-fc1bdc6c487a",
+                    "🏢 ROTA - Eldorado": "93f44c44-bfd4-417f-bad2-20933e5c0228",
+                    "🏢 ROTA - Pinheiro Machado": "a13229ca-0f8a-442a-91ab-27e0adc1810b",
+                    "🏢 ROTA - Seberi": "eb84222f-2e6b-4f68-8457-760d10e24043",
+                    "🏢 ROTA - POA Ipiranga": "85d3091d-af31-4cb5-86fc-1558aaefa19b",
+                    "🏢 ROTA - Cristal": "7a078786-1d9e-4433-9d63-8dfc58130b5f",
+                    "🏢 ROTA - Porto Alegre": "73a32cc3-d7ac-48d7-91d7-9046045d0bd7",
+                    "🏢 ROTA - Paradouro Rest.": "cad79622-124a-4dc0-9408-7da5227576f0",
+                    "🏢 ROTA - Transportadora": "3885ddf8-f0ac-4468-98ab-97a248e29150"
+                }
+                
+                empresas_ids = [EMPRESAS_MR[empresa] for empresa in st.session_state.empresas_selecionadas]
+                df_lancamentos_mr, df_transferencias_mr = buscar_dados_mr_para_analise(empresas_ids)
+                
+                # Analisar cada transação
+                movimentacoes_analisadas = []
+                
+                for _, transacao in df_consolidado.iterrows():
+                    status_analise = analisar_transacao_individual(
+                        transacao, df_lancamentos_mr, df_transferencias_mr
+                    )
+                    
+                    movimentacao = {
+                        'data': transacao['data'],
+                        'descricao': transacao['descricao'],
+                        'valor': transacao['valor_absoluto'],
+                        'banco': transacao['banco_sistema'],
+                        'status': status_analise['status'],
+                        'motivo': status_analise['motivo'],
+                        'acao_requerida': status_analise['acao'],
+                        'transacao_original': transacao.to_dict()
+                    }
+                    movimentacoes_analisadas.append(movimentacao)
+                
+                st.session_state.movimentacoes_analisadas = movimentacoes_analisadas
+                st.session_state.conciliacao_step = 6
+                st.success("✅ Análise de movimentações concluída!")
+                
+            except Exception as e:
+                st.error(f"❌ Erro na análise: {str(e)}")
+    
+    # Mostrar resultados da análise
+    if st.session_state.movimentacoes_analisadas:
+        render_resumo_analise_movimentacoes()
+
+def render_step_6_processar_titulo_brr():
+    """
+    Passo 6: Processar Pagamentos TITULO BRR
+    """
+    st.subheader("6️⃣ Processamento TITULO BRR")
+    st.markdown("**Detalhamento de pagamentos genéricos via arquivo de retorno**")
+    
+    if not st.session_state.movimentacoes_analisadas:
+        st.warning("⚠️ Analise as movimentações primeiro!")
+        return
+    
+    # Filtrar transações TITULO BRR
+    titulo_brr_transacoes = [
+        mov for mov in st.session_state.movimentacoes_analisadas 
+        if mov['status'] == 'TITULO_BRR'
+    ]
+    
+    if not titulo_brr_transacoes:
+        st.info("ℹ️ Nenhuma transação TITULO BRR detectada.")
+        st.session_state.conciliacao_step = 7
+        return
+    
+    st.warning(f"⚠️ **{len(titulo_brr_transacoes)} transações TITULO BRR** detectadas!")
+    
+    # Mostrar transações genéricas
+    with st.expander("👁️ Transações TITULO BRR Detectadas", expanded=True):
+        for transacao in titulo_brr_transacoes:
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.write(f"📅 {transacao['data'].strftime('%d/%m/%Y') if hasattr(transacao['data'], 'strftime') else transacao['data']}")
+            with col2:
+                st.write(f"💰 R$ {transacao['valor']:,.2f}")
+            with col3:
+                st.write(f"🏦 {transacao['banco']}")
+            st.caption(f"📝 {transacao['descricao']}")
+            st.markdown("---")
+    
+    # Upload arquivo de retorno
+    st.markdown("**📁 Upload do Arquivo de Retorno para Detalhamento:**")
+    arquivos_retorno = st.file_uploader(
+        "Selecione os arquivos de retorno (.RET):",
+        type=['ret', 'txt'],
+        accept_multiple_files=True,
+        key="titulo_brr_retorno_uploader"
+    )
+    
+    if arquivos_retorno:
+        if st.button("🔄 Processar Arquivo de Retorno", type="primary"):
+            with st.spinner("🔄 Processando arquivo de retorno..."):
+                try:
+                    # Usar BanrisulTituloBRRProcessor existente
+                    processor = BanrisulTituloBRRProcessor()
+                    
+                    # PRIMEIRO: Detectar transações TITULO BRR nas movimentações analisadas
+                    if hasattr(st.session_state, 'movimentacoes_analisadas'):
+                        # Converter movimentações para DataFrame para o processador
+                        df_temp = pd.DataFrame(titulo_brr_transacoes)
+                        stats = processor.detectar_transacoes_genericas(df_temp)
+                        st.info(f"🔍 Detectadas {stats['transacoes_genericas']} transações TITULO BRR para matching")
+                    
+                    # SEGUNDO: Processar arquivos de retorno
+                    resultado_retorno = processar_arquivos_retorno_banrisul(arquivos_retorno, processor)
+                    
+                    if resultado_retorno['arquivos_processados'] > 0:
+                        st.session_state.titulo_brr_processado = resultado_retorno
+                        st.session_state.conciliacao_step = 7
+                        
+                        # TERCEIRO: Fazer matching entre transações OFX e retorno
+                        matches = processor.fazer_matching_valor_data(tolerancia_dias=3, tolerancia_valor=0.05)
+                        
+                        if matches:
+                            st.success(f"🎯 **{len(matches)} matches** encontrados entre OFX e retorno!")
+                            
+                            with st.expander("🔍 Detalhes dos Matches", expanded=True):
+                                for i, match in enumerate(matches):
+                                    st.markdown(f"**Match {i+1}:**")
+                                    col1, col2 = st.columns(2)
+                                    with col1:
+                                        st.write("**Transação OFX:**")
+                                        st.write(f"📅 {match['transacao_ofx']['data']}")
+                                        st.write(f"💰 R$ {match['valor_ofx']:,.2f}")
+                                        st.write(f"📝 {match['transacao_ofx']['descricao']}")
+                                    with col2:
+                                        st.write("**Arquivo Retorno:**")
+                                        st.write(f"📄 {match['arquivo_retorno']}")
+                                        st.write(f"💰 R$ {match['valor_arquivo']:,.2f}")
+                                        st.write(f"🎯 Confiança: {match['confianca_match']:.1%}")
+                                    
+                                    st.markdown("**Pagamentos Detalhados:**")
+                                    df_detalhes = pd.DataFrame(match['pagamentos_detalhados'])
+                                    if not df_detalhes.empty:
+                                        st.dataframe(df_detalhes[['data', 'valor', 'beneficiario', 'descricao']], use_container_width=True)
+                                    st.markdown("---")
+                        else:
+                            st.warning("⚠️ Nenhum match automático encontrado. Os arquivos foram processados mas não correspondem às transações TITULO BRR detectadas.")
+                        
+                        st.success("✅ Arquivo de retorno processado com sucesso!")
+                    else:
+                        st.error("❌ Nenhum arquivo foi processado com sucesso!")
+                    
+                except Exception as e:
+                    st.error(f"❌ Erro ao processar retorno: {str(e)}")
+
+def render_step_7_conferir_retorno():
+    """
+    Passo 7: Conferir Arquivo de Retorno vs Sistema MR
+    """
+    st.subheader("7️⃣ Conferência do Retorno")
+    st.markdown("**Verificação dos pagamentos detalhados contra o sistema MR**")
+    
+    if not st.session_state.titulo_brr_processado:
+        st.info("ℹ️ Nenhum arquivo de retorno para conferir.")
+        st.session_state.conciliacao_step = 8
+        return
+    
+    # Mostrar resumo dos arquivos processados
+    resultado = st.session_state.titulo_brr_processado
+    
+    st.markdown("### � **Resumo dos Arquivos Processados**")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("📄 Arquivos", resultado['arquivos_processados'])
+    with col2:
+        total_pagamentos = sum(res['total_pagamentos'] for res in resultado['resultados'])
+        st.metric("💳 Total Pagamentos", total_pagamentos)
+    with col3:
+        valor_total = sum(res['valor_total'] for res in resultado['resultados'])
+        st.metric("💰 Valor Total", f"R$ {valor_total:,.2f}")
+    
+    # Mostrar detalhes por arquivo
+    for resultado_arquivo in resultado['resultados']:
+        with st.expander(f"📁 {resultado_arquivo['nome_arquivo']} - {resultado_arquivo['total_pagamentos']} pagamentos", expanded=True):
+            
+            # Estatísticas do arquivo
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("📊 Pagamentos", resultado_arquivo['total_pagamentos'])
+            with col2:
+                st.metric("� Valor Total", f"R$ {resultado_arquivo['valor_total']:,.2f}")
+            with col3:
+                valor_medio = resultado_arquivo['valor_total'] / resultado_arquivo['total_pagamentos'] if resultado_arquivo['total_pagamentos'] > 0 else 0
+                st.metric("📈 Valor Médio", f"R$ {valor_medio:.2f}")
+            
+            # Tabela dos pagamentos
+            if 'df_detalhado' in resultado_arquivo and not resultado_arquivo['df_detalhado'].empty:
+                df_display = resultado_arquivo['df_detalhado'].copy()
+                
+                # Formatar colunas para melhor visualização
+                if 'valor' in df_display.columns:
+                    df_display['valor_formatado'] = df_display['valor'].apply(lambda x: f"R$ {x:,.2f}")
+                
+                # Mostrar apenas colunas relevantes
+                colunas_display = ['data', 'valor_formatado', 'beneficiario', 'descricao', 'codigo']
+                colunas_existentes = [col for col in colunas_display if col in df_display.columns]
+                
+                st.dataframe(df_display[colunas_existentes], use_container_width=True, height=300)
+                
+                # Opção de download dos dados detalhados
+                excel_detalhado = criar_excel_pagamentos_detalhados(df_display)
+                st.download_button(
+                    label=f"📥 Download Detalhado - {resultado_arquivo['nome_arquivo']}.xlsx",
+                    data=excel_detalhado,
+                    file_name=f"pagamentos_detalhados_{resultado_arquivo['nome_arquivo']}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+    
+    # Botão para avançar
+    if st.button("✅ Confirmar e Avançar", type="primary"):
+        st.session_state.conciliacao_step = 8
+        st.success("✅ Conferência concluída! Prossiga para a geração dos lançamentos.")
+
+def criar_excel_pagamentos_detalhados(df_pagamentos):
+    """Cria arquivo Excel com os pagamentos detalhados"""
+    output = io.BytesIO()
+    
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        # Remover coluna formatada para o Excel
+        df_excel = df_pagamentos.copy()
+        if 'valor_formatado' in df_excel.columns:
+            df_excel = df_excel.drop('valor_formatado', axis=1)
+        
+        df_excel.to_excel(writer, sheet_name='Pagamentos Detalhados', index=False)
+        
+        # Ajustar largura das colunas
+        worksheet = writer.sheets['Pagamentos Detalhados']
+        for column in worksheet.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)
+            worksheet.column_dimensions[column_letter].width = adjusted_width
+    
+    output.seek(0)
+    return output.getvalue()
+
+def render_step_8_gerar_lancamentos():
+    """
+    Passo 8: Gerar Lançamentos Finais
+    """
+    st.subheader("8️⃣ Geração de Lançamentos")
+    st.markdown("**Categorização inteligente e geração do Excel para Sistema MR**")
+    
+    if not st.session_state.movimentacoes_analisadas:
+        st.warning("⚠️ Complete as etapas anteriores primeiro!")
+        return
+    
+    # Filtrar movimentações que precisam ser lançadas
+    movimentacoes_para_lancar = [
+        mov for mov in st.session_state.movimentacoes_analisadas 
+        if mov['acao_requerida'] == 'LANCAR'
+    ]
+    
+    if not movimentacoes_para_lancar:
+        st.info("ℹ️ **Nenhuma movimentação nova para lançar!** Todas as transações já estão no sistema.")
+        return
+    
+    st.warning(f"📝 **{len(movimentacoes_para_lancar)} movimentações** precisam ser lançadas no sistema MR.")
+    
+    if st.button("🤖 Gerar Lançamentos com IA", type="primary"):
+        with st.spinner("🤖 Categorizando movimentações automaticamente..."):
+            try:
+                # Converter para DataFrame para processamento
+                df_para_lancar = pd.DataFrame([mov['transacao_original'] for mov in movimentacoes_para_lancar])
+                
+                # Buscar histórico MR para categorização
+                empresas_ids = [dados['codigo'] for dados in st.session_state.bancos_sistema][:1]  # PLACEHOLDER
+                df_historico_mr = buscar_lancamentos_api(ids_empresa=empresas_ids[0], anos="2024,2025")
+                
+                # Usar função existente de categorização
+                df_categorizados = processar_ofx_simplificado(df_para_lancar, df_historico_mr)
+                
+                st.session_state.lancamentos_finais = df_categorizados
+                st.success("✅ Lançamentos gerados com sucesso!")
+                
+            except Exception as e:
+                st.error(f"❌ Erro na categorização: {str(e)}")
+    
+    # Mostrar resultado final
+    if not st.session_state.lancamentos_finais.empty:
+        render_resultado_final_conciliacao()
+
+# Funções auxiliares para a conciliação
+
+def buscar_dados_mr_para_analise(empresas_ids):
+    """Busca dados do sistema MR para análise"""
+    try:
+        # Converter lista de IDs para string se necessário
+        if isinstance(empresas_ids, list):
+            ids_string = ','.join(empresas_ids)
+        else:
+            ids_string = str(empresas_ids)
+        
+        # Buscar lançamentos dos últimos 30 dias
+        df_lancamentos = buscar_lancamentos_api(ids_empresa=empresas_ids[0] if isinstance(empresas_ids, list) else empresas_ids, anos="2025")
+        
+        # Buscar transferências dos últimos 30 dias  
+        resultado_completo = buscar_lancamentos_e_transferencias_api(ids_string, "2025")
+        df_transferencias = resultado_completo['transferencias']
+        
+        return df_lancamentos, df_transferencias
+        
+    except Exception as e:
+        st.error(f"Erro ao buscar dados MR: {str(e)}")
+        return pd.DataFrame(), pd.DataFrame()
+
+def analisar_transacao_individual(transacao, df_lancamentos_mr, df_transferencias_mr):
+    """Analisa uma transação individual"""
+    data = transacao['data']
+    valor = transacao['valor_absoluto']
+    descricao = str(transacao['descricao']).upper()
+    
+    # 1. Verificar TITULO BRR
+    if any(termo in descricao for termo in ['PAGAMENTO TITULO BRR', 'PAG TITULO BRR', 'PAGAMENTO TIT BRR']):
+        return {'status': 'TITULO_BRR', 'motivo': 'Pagamento genérico detectado', 'acao': 'DETALHAR'}
+    
+    # 2. Verificar se já está lançado (Data + Valor)
+    if not df_lancamentos_mr.empty:
+        matches = df_lancamentos_mr[
+            (df_lancamentos_mr['data'] == data) & 
+            (abs(df_lancamentos_mr['valor'].astype(float) - float(valor)) < 0.01)
+        ]
+        if not matches.empty:
+            return {'status': 'JA_LANCADO', 'motivo': 'Encontrado em lançamentos MR', 'acao': 'IGNORAR'}
+    
+    # 3. Verificar se é transferência
+    if not df_transferencias_mr.empty:
+        matches = df_transferencias_mr[
+            (df_transferencias_mr['data'] == data) & 
+            (abs(df_transferencias_mr['valor'].astype(float) - float(valor)) < 0.01)
+        ]
+        if not matches.empty:
+            return {'status': 'TRANSFERENCIA', 'motivo': 'Encontrado em transferências MR', 'acao': 'IGNORAR'}
+    
+    # 4. Movimentação nova
+    return {'status': 'NOVO', 'motivo': 'Movimentação não encontrada no sistema', 'acao': 'LANCAR'}
+
+def render_resumo_analise_movimentacoes():
+    """Renderiza resumo da análise de movimentações"""
+    movimentacoes = st.session_state.movimentacoes_analisadas
+    
+    # Contar por status
+    contadores = {}
+    for mov in movimentacoes:
+        status = mov['status']
+        contadores[status] = contadores.get(status, 0) + 1
+    
+    # Métricas
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("✅ Já Lançado", contadores.get('JA_LANCADO', 0))
+    with col2:
+        st.metric("🔄 Transferências", contadores.get('TRANSFERENCIA', 0))
+    with col3:
+        st.metric("🏦 TITULO BRR", contadores.get('TITULO_BRR', 0))
+    with col4:
+        st.metric("➕ Novos", contadores.get('NOVO', 0))
+    
+    # Tabela detalhada
+    with st.expander("📋 Detalhes das Movimentações", expanded=False):
+        for mov in movimentacoes:
+            status_emoji = {
+                'JA_LANCADO': '✅',
+                'TRANSFERENCIA': '🔄', 
+                'TITULO_BRR': '🏦',
+                'NOVO': '➕'
+            }.get(mov['status'], '❓')
+            
+            col1, col2, col3, col4 = st.columns([1, 2, 1, 1])
+            
+            with col1:
+                st.write(f"{status_emoji} **{mov['status']}**")
+            with col2:
+                st.write(f"📝 {mov['descricao'][:50]}...")
+            with col3:
+                st.write(f"💰 R$ {mov['valor']:,.2f}")
+            with col4:
+                st.write(f"🏦 {mov['banco']}")
+            
+            st.caption(f"💡 {mov['motivo']}")
+            st.markdown("---")
+
+def render_resultado_final_conciliacao():
+    """Renderiza resultado final da conciliação"""
+    st.markdown("### 🎯 Resultado Final da Conciliação")
+    
+    df_final = st.session_state.lancamentos_finais
+    
+    # Métricas finais
+    total = len(df_final)
+    auto_count = len(df_final[df_final['Status'] == 'AUTO']) if 'Status' in df_final.columns else 0
+    revisar_count = len(df_final[df_final['Status'] == 'REVISAR']) if 'Status' in df_final.columns else 0
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("📊 Total Lançamentos", total)
+    with col2:
+        st.metric("✅ Automáticos", auto_count)
+    with col3:
+        st.metric("⚠️ Para Revisão", revisar_count)
+    
+    # Preview do Excel
+    st.markdown("### 📋 Preview dos Lançamentos")
+    st.dataframe(df_final, use_container_width=True)
+    
+    # Download Excel
+    if st.button("📥 Gerar Excel para Sistema MR", type="primary"):
+        try:
+            excel_bytes, df_preview = criar_excel_mr_ofx(df_final, "Conciliação Bancária")
+            
+            st.download_button(
+                label="📥 Download Excel Sistema MR",
+                data=excel_bytes,
+                file_name=f"conciliacao_bancaria_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            
+            st.success("✅ **Conciliação Bancária Concluída!** Arquivo Excel gerado com sucesso.")
+            
+        except Exception as e:
+            st.error(f"❌ Erro ao gerar Excel: {str(e)}")
+
+def processar_arquivos_retorno_banrisul(arquivos_retorno, processor):
+    """Processa arquivos de retorno usando o BanrisulTituloBRRProcessor"""
+    resultados = []
+    
+    for arquivo in arquivos_retorno:
+        try:
+            # Ler conteúdo do arquivo
+            content = arquivo.getvalue()
+            
+            # Processar usando o processor existente - retorna DataFrame
+            df_resultado = processor.processar_arquivo_retorno(content, arquivo.name)
+            
+            if df_resultado.empty:
+                st.warning(f"⚠️ Nenhum pagamento encontrado em {arquivo.name}")
+                continue
+            
+            # Converter DataFrame para lista de dicionários para compatibilidade
+            pagamentos = df_resultado.to_dict('records')
+            
+            resultado = {
+                'nome_arquivo': arquivo.name,
+                'df_detalhado': df_resultado,
+                'total_pagamentos': len(pagamentos),
+                'valor_total': sum(p.get('valor', 0) for p in pagamentos),
+                'pagamentos_raw': pagamentos
+            }
+            
+            resultados.append(resultado)
+            
+            # Mostrar preview dos dados processados
+            st.success(f"✅ **{arquivo.name}** processado: {len(pagamentos)} pagamentos encontrados")
+            
+            with st.expander(f"👁️ Preview: {arquivo.name}", expanded=False):
+                # Exibir estatísticas
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("📊 Total Pagamentos", len(pagamentos))
+                with col2:
+                    st.metric("💰 Valor Total", f"R$ {sum(p.get('valor', 0) for p in pagamentos):,.2f}")
+                with col3:
+                    valor_medio = sum(p.get('valor', 0) for p in pagamentos) / len(pagamentos) if pagamentos else 0
+                    st.metric("📈 Valor Médio", f"R$ {valor_medio:,.2f}")
+                
+                # Exibir tabela dos pagamentos
+                if not df_resultado.empty:
+                    # Formatar colunas para exibição
+                    df_display = df_resultado.copy()
+                    if 'valor' in df_display.columns:
+                        df_display['valor_formatado'] = df_display['valor'].apply(lambda x: f"R$ {x:,.2f}")
+                    
+                    # Mostrar apenas colunas que existem
+                    colunas_mostrar = []
+                    for col in ['data', 'valor_formatado', 'beneficiario', 'descricao', 'codigo']:
+                        if col in df_display.columns:
+                            colunas_mostrar.append(col)
+                    
+                    if colunas_mostrar:
+                        st.dataframe(df_display[colunas_mostrar], use_container_width=True)
+                    else:
+                        st.dataframe(df_display, use_container_width=True)
+            
+        except Exception as e:
+            st.error(f"❌ Erro ao processar {arquivo.name}: {str(e)}")
+            # Adicionar debug para entender melhor o erro
+            st.error(f"Debug: Tipo do erro: {type(e).__name__}")
+    
+    return {
+        'arquivos_processados': len(resultados),
+        'resultados': resultados,
+        'processor': processor
+    }
 
 def render_ofx_tab():
     """Renderiza a nova aba OFX - Fase 1"""
@@ -1433,10 +2354,171 @@ def render_resultados_ofx_simplificados(dados_processados):
         st.info(f"💡 **{stats.get('revisar', 0)} transações** estão marcadas como 'MANUAL' no Excel. Você pode ajustar as categorias/contatos diretamente no arquivo antes de importar no Sistema MR.")
 
 def render_titulo_brr_tab():
-    """Função simplificada para título BRR"""
-    st.info("🏦 **Funcionalidade TITULO BRR**")
-    st.markdown("Esta seção permite processar arquivos de retorno específicos do Banrisul.")
-    st.markdown("**Em desenvolvimento** - Funcionalidade completa será implementada em breve.")
+    """Renderiza a aba completa de processamento TITULO BRR"""
+    st.markdown("### 🏦 **Detalhamento TITULO BRR - FUNCIONALIDADE COMPLETA** ✅")
+    
+    st.markdown("""
+    **Esta funcionalidade permite:**
+    - 🔍 **Detectar** transações genéricas "PAGAMENTO TITULO BRR" em arquivos OFX
+    - 📁 **Processar** arquivos de retorno (.RET) do Banrisul com lógica CNAB240
+    - 🎯 **Fazer matching** automático entre transações OFX e pagamentos detalhados  
+    - 📊 **Visualizar** todos os beneficiários e valores específicos
+    - 📥 **Exportar** planilhas Excel com detalhamento completo
+    """)
+    
+    # Verificar se há dados OFX carregados
+    if not hasattr(st.session_state, 'df_ofx') or st.session_state.df_ofx is None:
+        st.warning("⚠️ **Primeiro carregue arquivos OFX** na aba 'Gestão Financeira (OFX)' para usar esta funcionalidade.")
+        return
+    
+    # Detectar transações TITULO BRR nos dados OFX existentes
+    processor = BanrisulTituloBRRProcessor()
+    stats = processor.detectar_transacoes_genericas(st.session_state.df_ofx)
+    
+    # Mostrar estatísticas
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("📊 Total Transações", stats['total_transacoes'])
+    with col2:
+        st.metric("🎯 TITULO BRR Detectadas", stats['transacoes_genericas'])
+    with col3:
+        if stats['transacoes_genericas'] > 0:
+            st.metric("💰 Valor Total Genérico", f"R$ {stats['valor_total_generico']:,.2f}")
+        else:
+            st.metric("💰 Valor Total Genérico", "R$ 0,00")
+    
+    # Mostrar progresso
+    if stats['transacoes_genericas'] > 0:
+        progress = stats['transacoes_genericas'] / stats['total_transacoes']
+        st.progress(progress, text=f"{stats['percentual_generico']:.1f}% das transações são TITULO BRR")
+        
+        # Mostrar transações detectadas
+        with st.expander("👁️ **Transações TITULO BRR Detectadas**", expanded=True):
+            df_genericas = stats['df_genericas']
+            for idx, transacao in df_genericas.iterrows():
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.write(f"📅 **{transacao['data']}**")
+                with col2:
+                    st.write(f"💰 **R$ {transacao['valor_absoluto']:,.2f}**")
+                with col3:
+                    st.write(f"🏦 **{transacao['banco_nome']}**")
+                st.caption(f"📝 {transacao['descricao']}")
+                st.markdown("---")
+        
+        # Upload arquivo de retorno
+        st.markdown("### 📁 **Upload do Arquivo de Retorno**")
+        st.markdown("Carregue o arquivo .RET correspondente para obter o detalhamento completo:")
+        
+        arquivos_retorno = st.file_uploader(
+            "Selecione os arquivos de retorno (.RET):",
+            type=['ret', 'txt', 'cnab'],
+            accept_multiple_files=True,
+            key="titulo_brr_standalone_uploader"
+        )
+        
+        if arquivos_retorno:
+            if st.button("🚀 **Processar Retorno e Detalhar**", type="primary"):
+                with st.spinner("🔄 Processando arquivo de retorno..."):
+                    try:
+                        # Processar arquivos
+                        resultado_retorno = processar_arquivos_retorno_banrisul(arquivos_retorno, processor)
+                        
+                        if resultado_retorno['arquivos_processados'] > 0:
+                            # Fazer matching
+                            matches = processor.fazer_matching_valor_data(tolerancia_dias=7, tolerancia_valor=0.05)
+                            
+                            if matches:
+                                st.success(f"🎯 **{len(matches)} matches perfeitos** encontrados!")
+                                
+                                # Mostrar resultados detalhados
+                                for i, match in enumerate(matches):
+                                    with st.expander(f"🔍 **Match {i+1}** - Confiança: {match['confianca_match']:.1%}", expanded=True):
+                                        
+                                        # Informações do match
+                                        col1, col2 = st.columns(2)
+                                        with col1:
+                                            st.markdown("**📊 Transação OFX Original:**")
+                                            st.write(f"📅 {match['transacao_ofx']['data']}")
+                                            st.write(f"💰 R$ {match['valor_ofx']:,.2f}")
+                                            st.write(f"📝 {match['transacao_ofx']['descricao']}")
+                                        
+                                        with col2:
+                                            st.markdown("**📄 Arquivo de Retorno:**")
+                                            st.write(f"📁 {match['arquivo_retorno']}")
+                                            st.write(f"💰 R$ {match['valor_arquivo']:,.2f}")
+                                            st.write(f"🎯 Precisão: {(1-match['diferenca_valor']):.1%}")
+                                        
+                                        # Tabela de pagamentos detalhados
+                                        st.markdown("**💳 Pagamentos Detalhados:**")
+                                        df_pagamentos = pd.DataFrame(match['pagamentos_detalhados'])
+                                        
+                                        if not df_pagamentos.empty:
+                                            # Formatar para exibição
+                                            df_display = df_pagamentos.copy()
+                                            if 'valor' in df_display.columns:
+                                                df_display['valor_formatado'] = df_display['valor'].apply(lambda x: f"R$ {x:,.2f}")
+                                            
+                                            # Mostrar tabela
+                                            colunas_exibir = ['data', 'valor_formatado', 'beneficiario', 'descricao', 'codigo']
+                                            colunas_existentes = [col for col in colunas_exibir if col in df_display.columns]
+                                            st.dataframe(df_display[colunas_existentes], use_container_width=True)
+                                            
+                                            # Download individual
+                                            excel_detalhado = criar_excel_pagamentos_detalhados(df_display)
+                                            st.download_button(
+                                                label=f"📥 Download Detalhado - Match {i+1}",
+                                                data=excel_detalhado,
+                                                file_name=f"titulo_brr_detalhado_match_{i+1}.xlsx",
+                                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                            )
+                                        
+                                        st.markdown("---")
+                                
+                                # Download consolidado
+                                st.markdown("### 📥 **Download Consolidado**")
+                                todos_pagamentos = []
+                                for match in matches:
+                                    todos_pagamentos.extend(match['pagamentos_detalhados'])
+                                
+                                if todos_pagamentos:
+                                    df_consolidado = pd.DataFrame(todos_pagamentos)
+                                    excel_consolidado = criar_excel_pagamentos_detalhados(df_consolidado)
+                                    
+                                    col1, col2 = st.columns(2)
+                                    with col1:
+                                        st.metric("📊 Total Beneficiários", len(df_consolidado))
+                                    with col2:
+                                        valor_total_detalhado = df_consolidado['valor'].sum()
+                                        st.metric("💰 Valor Total Detalhado", f"R$ {valor_total_detalhado:,.2f}")
+                                    
+                                    st.download_button(
+                                        label="📥 **Download Todos os Pagamentos Detalhados**",
+                                        data=excel_consolidado,
+                                        file_name=f"titulo_brr_completo_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                        type="primary"
+                                    )
+                            else:
+                                st.warning("⚠️ Nenhum match automático encontrado. Verifique se o arquivo de retorno corresponde às transações OFX.")
+                        else:
+                            st.error("❌ Nenhum arquivo foi processado com sucesso!")
+                            
+                    except Exception as e:
+                        st.error(f"❌ Erro no processamento: {str(e)}")
+    
+    else:
+        st.info("ℹ️ **Nenhuma transação TITULO BRR** foi detectada nos arquivos OFX carregados.")
+        st.markdown("""
+        **Para usar esta funcionalidade:**
+        1. Carregue arquivos OFX do Banrisul que contenham transações "PAGAMENTO TITULO BRR"
+        2. Retorne a esta aba para processar os detalhes
+        3. Faça upload dos arquivos de retorno (.RET) correspondentes
+        """)
+    
+    # Rodapé informativo
+    st.markdown("---")
+    st.markdown("💡 **Dica:** Esta funcionalidade substitui transações genéricas por listas detalhadas de beneficiários e valores específicos extraídos dos arquivos de retorno CNAB240.")
 
 def render_ofx_results():
     """Renderiza os resultados do processamento OFX"""

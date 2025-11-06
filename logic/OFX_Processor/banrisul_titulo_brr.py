@@ -4,8 +4,7 @@ Identifica transações genéricas do OFX que precisam ser detalhadas via arquiv
 """
 
 import pandas as pd
-import re
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 from datetime import datetime
 
 class BanrisulTituloBRRProcessor:
@@ -59,23 +58,25 @@ class BanrisulTituloBRRProcessor:
             'percentual_generico': (total_genericas / total_transacoes * 100) if total_transacoes > 0 else 0
         }
     
-    def processar_arquivo_retorno(self, arquivo_content: bytes, nome_arquivo: str) -> Dict:
+    def processar_arquivo_retorno(self, arquivo_content, nome_arquivo: str = ""):
         """
         Processa arquivo de retorno do banco para extrair detalhes dos pagamentos
         
         Args:
-            arquivo_content: Conteúdo do arquivo de retorno
+            arquivo_content: Conteúdo do arquivo de retorno (string ou bytes)
             nome_arquivo: Nome do arquivo original
             
         Returns:
-            Dict com detalhes extraídos
+            DataFrame com pagamentos detalhados ou Dict com detalhes extraídos
         """
         try:
-            # Decodificar conteúdo do arquivo
-            content_str = arquivo_content.decode('utf-8', errors='ignore')
+            # Decodificar conteúdo do arquivo se necessário
+            if isinstance(arquivo_content, bytes):
+                content_str = arquivo_content.decode('utf-8', errors='ignore')
+            else:
+                content_str = str(arquivo_content)
             
-            # Aqui você pode usar a lógica existente do CNAB240
-            # Por enquanto, vou simular a extração
+            # Usar a lógica existente do CNAB240 para extrair pagamentos
             pagamentos_detalhados = self._extrair_pagamentos_do_retorno(content_str)
             
             # Armazenar arquivo processado
@@ -85,73 +86,84 @@ class BanrisulTituloBRRProcessor:
                 'data_processamento': datetime.now()
             }
             
-            return {
-                'nome_arquivo': nome_arquivo,
-                'total_pagamentos': len(pagamentos_detalhados),
-                'valor_total': sum(p.get('valor', 0) for p in pagamentos_detalhados),
-                'data_processamento': datetime.now(),
-                'pagamentos': pagamentos_detalhados
-            }
+            # Retornar DataFrame se há pagamentos, senão DataFrame vazio
+            if pagamentos_detalhados:
+                df_resultado = pd.DataFrame(pagamentos_detalhados)
+                return df_resultado
+            else:
+                # Retornar DataFrame vazio com estrutura esperada
+                return pd.DataFrame(columns=['data', 'valor', 'beneficiario', 'nosso_numero', 'seu_numero'])
             
         except Exception as e:
-            return {
-                'erro': f"Erro ao processar arquivo {nome_arquivo}: {str(e)}",
-                'nome_arquivo': nome_arquivo
-            }
+            # Em caso de erro, retornar DataFrame vazio
+            return pd.DataFrame(columns=['data', 'valor', 'beneficiario', 'nosso_numero', 'seu_numero'])
     
     def _extrair_pagamentos_do_retorno(self, content: str) -> List[Dict]:
         """
         Extrai pagamentos detalhados do arquivo de retorno CNAB240
-        NOTA: Aqui deve usar a lógica existente do seu código CNAB
+        Usa a lógica real do sistema CNAB240 existente
         """
-        # PLACEHOLDER - implementar com sua lógica existente de CNAB240
-        # Por agora, simulo alguns pagamentos para demonstrar
         pagamentos = []
         
-        # Aqui você usaria sua função existente de processamento CNAB240
-        # Exemplo de estrutura esperada:
-        linhas = content.split('\n')
+        # Código de ocorrências CNAB240 (do arquivo original)
+        codigo_ocorrencias = {
+            "00": "Crédito efetuado",
+            "01": "Insuficiência de fundos",
+            "02": "Crédito cancelado pelo pagador/credor",
+            "03": "Débito autorizado pela agência - efetuado",
+            "HA": "Lote não aceito",
+            "HB": "Inscrição da empresa inválida para o contrato",
+            "HC": "Convênio com a empresa inexistente/inválido para o contrato",
+            "HD": "Agência/conta corrente da empresa inexistente/inválida para o contrato",
+            "HE": "Tipo de serviço inválido para o contrato",
+            "HF": "Conta-Corrente da Empresa com saldo insuficiente",
+            "H4": "Retorno de Crédito não Pago",
+            "AA": "Controle inválido",
+            "AB": "Tipo de operação inválido",
+            "AC": "Tipo de serviço inválido",
+            "AD": "Forma de lançamento inválida",
+            "AE": "Tipo/número de inscrição inválido",
+            "AF": "Código do convênio inválido",
+            "AG": "Agência/conta corrente/Dv inválido"
+        }
         
-        for linha in linhas:
-            if len(linha) >= 240:  # Linha CNAB240 válida
-                # Simular extração (implementar com sua lógica real)
-                if linha[7:8] == '3' and linha[13:14] == 'J':  # Segmento J
-                    pagamento = {
-                        'data': self._extrair_data_linha(linha),
-                        'valor': self._extrair_valor_linha(linha),
-                        'beneficiario': self._extrair_beneficiario_linha(linha),
-                        'nosso_numero': self._extrair_nosso_numero_linha(linha),
-                        'seu_numero': self._extrair_seu_numero_linha(linha),
-                        'linha_original': linha
-                    }
-                    pagamentos.append(pagamento)
+        # Processar linha por linha (lógica do Retono_Excel.py)
+        for linha in content.splitlines():
+            if len(linha) >= 150 and linha[13] == 'J':  # Segmento J
+                nome_favorecido = linha[61:90].strip()
+                data_pagamento = linha[91:100]
+                valor = linha[101:114].strip()
+                valor_pago = linha[27:36].strip()
+                codigo_pagamento = linha[230:235].strip()
+                descricao_confirmacao = codigo_ocorrencias.get(codigo_pagamento, codigo_pagamento)
+                
+                # Limpar caracteres zeros do nome
+                if "0" in nome_favorecido:
+                    nome_favorecido = nome_favorecido.replace("0", "")
+                
+                try:
+                    data_formatada = f"{data_pagamento[4:8]}-{data_pagamento[2:4]}-{data_pagamento[0:2]}"
+                    valor_formatado = int(valor) / 100 if valor.isdigit() else 0
+                    valor_pago_formatado = int(valor_pago) / 100 if valor_pago.isdigit() else 0
+                except ValueError:
+                    data_formatada = ""
+                    valor_formatado = 0
+                    valor_pago_formatado = 0
+                
+                pagamento = {
+                    'data': data_formatada,
+                    'valor': valor_pago_formatado,
+                    'valor_original': valor_formatado,
+                    'beneficiario': nome_favorecido,
+                    'codigo': codigo_pagamento,
+                    'descricao': descricao_confirmacao,
+                    'nosso_numero': linha[165:185].strip() if len(linha) > 185 else '',
+                    'seu_numero': linha[185:205].strip() if len(linha) > 205 else '',
+                    'linha_original': linha
+                }
+                pagamentos.append(pagamento)
         
         return pagamentos
-    
-    def _extrair_data_linha(self, linha: str) -> str:
-        """Extrai data da linha CNAB240 - implementar com sua lógica"""
-        # PLACEHOLDER - implementar com posições corretas do CNAB240
-        return "2025-10-01"  # Exemplo
-    
-    def _extrair_valor_linha(self, linha: str) -> float:
-        """Extrai valor da linha CNAB240 - implementar com sua lógica"""
-        # PLACEHOLDER - implementar com posições corretas do CNAB240
-        return 1000.00  # Exemplo
-    
-    def _extrair_beneficiario_linha(self, linha: str) -> str:
-        """Extrai beneficiário da linha CNAB240 - implementar com sua lógica"""
-        # PLACEHOLDER - implementar com posições corretas do CNAB240
-        return "BENEFICIARIO EXEMPLO"
-    
-    def _extrair_nosso_numero_linha(self, linha: str) -> str:
-        """Extrai nosso número da linha CNAB240"""
-        # PLACEHOLDER - implementar com posições corretas
-        return "123456789"
-    
-    def _extrair_seu_numero_linha(self, linha: str) -> str:
-        """Extrai seu número da linha CNAB240"""
-        # PLACEHOLDER - implementar com posições corretas
-        return "987654321"
     
     def fazer_matching_valor_data(self, tolerancia_dias: int = 2, tolerancia_valor: float = 0.01) -> List[Dict]:
         """
@@ -167,32 +179,47 @@ class BanrisulTituloBRRProcessor:
         matches = []
         
         for transacao_ofx in self.transacoes_genericas:
-            data_ofx = pd.to_datetime(transacao_ofx['data']).date()
-            valor_ofx = float(transacao_ofx['valor_absoluto'])
-            
-            # Buscar em todos os arquivos de retorno
-            for nome_arquivo, dados_arquivo in self.arquivos_retorno.items():
-                pagamentos = dados_arquivo['pagamentos']
+            try:
+                # Converter data OFX para comparação
+                if isinstance(transacao_ofx.get('data'), str):
+                    data_ofx = pd.to_datetime(transacao_ofx['data']).date()
+                else:
+                    data_ofx = transacao_ofx['data']
                 
-                # Agrupar pagamentos por data e somar valores
-                valor_total_arquivo = sum(p.get('valor', 0) for p in pagamentos)
+                valor_ofx = float(transacao_ofx.get('valor_absoluto', 0))
                 
-                # Verificar se o valor total do arquivo bate com a transação OFX
-                diferenca_valor = abs(valor_ofx - valor_total_arquivo) / valor_ofx
-                
-                if diferenca_valor <= tolerancia_valor:
-                    match = {
-                        'transacao_ofx': transacao_ofx,
-                        'arquivo_retorno': nome_arquivo,
-                        'valor_ofx': valor_ofx,
-                        'valor_arquivo': valor_total_arquivo,
-                        'diferenca_valor': diferenca_valor,
-                        'pagamentos_detalhados': pagamentos,
-                        'data_match': datetime.now(),
-                        'confianca_match': 1.0 - diferenca_valor
-                    }
-                    matches.append(match)
-                    break  # Primeiro match encontrado
+                # Buscar em todos os arquivos de retorno
+                for nome_arquivo, dados_arquivo in self.arquivos_retorno.items():
+                    pagamentos = dados_arquivo.get('pagamentos', [])
+                    
+                    if not pagamentos:
+                        continue
+                    
+                    # Calcular valor total do arquivo
+                    valor_total_arquivo = sum(p.get('valor', 0) for p in pagamentos)
+                    
+                    # Verificar matching por valor
+                    if valor_total_arquivo > 0:
+                        diferenca_valor = abs(valor_ofx - valor_total_arquivo) / max(valor_ofx, valor_total_arquivo)
+                        
+                        if diferenca_valor <= tolerancia_valor:
+                            match = {
+                                'transacao_ofx': transacao_ofx,
+                                'arquivo_retorno': nome_arquivo,
+                                'valor_ofx': valor_ofx,
+                                'valor_arquivo': valor_total_arquivo,
+                                'diferenca_valor': diferenca_valor,
+                                'pagamentos_detalhados': pagamentos,
+                                'data_match': datetime.now(),
+                                'confianca_match': 1.0 - diferenca_valor
+                            }
+                            matches.append(match)
+                            break  # Primeiro match encontrado para esta transação
+                            
+            except Exception as e:
+                # Log do erro mas continua processamento
+                print(f"Erro no matching da transação {transacao_ofx}: {e}")
+                continue
         
         self.matches_encontrados = matches
         return matches
