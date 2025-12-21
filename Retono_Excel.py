@@ -168,6 +168,7 @@ if st.session_state.df_ret is not None:
             "GRUPO ROTA - ARARANGUA": "772644ba-3a49-4736-8443-f057581d6b39",
             "GRUPO ROTA - TERRA DE AREIA": "4d49850f-ebf1-433d-a32a-527b54e856aa",
             "GRUPO ROTA - CAMINHO DO SOL": "d5ecbd61-8d4a-4ac6-8cc9-7c4919ead401",
+            "GRUPO ROTA - CANDIOTA": "b2107e4f-59a7-44a0-9a84-d81abaab5ad2",
             "GRUPO ROTA - JAGUARUNA": "149653c2-f107-4c60-aad0-b034789c8504",
             "GRUPO ROTA - PARADOURO": "735b6b4e-5513-4bb5-a9c4-50d92462921d",
             "GRUPO ROTA - SÃO PAULO": "1db3be97-a6d6-484a-b75b-fc1bdc6c487a",

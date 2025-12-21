@@ -402,6 +402,7 @@ def buscar_nomes_empresas(ids_empresa: list) -> dict:
         "85d3091d-af31-4cb5-86fc-1558aaefa19b": "GRUPO ROTA - POA IPIRANGA",
         "7a078786-1d9e-4433-9d63-8dfc58130b5f": "GRUPO ROTA - CRISTAL",
         "73a32cc3-d7ac-48d7-91d7-9046045d0bd7": "GRUPO ROTA - PORTO ALEGRE",
+        "b2107e4f-59a7-44a0-9a84-d81abaab5ad2": "GRUPO ROTA - CANDIOTA",
         "cad79622-124a-4dc0-9408-7da5227576f0": "GRUPO ROTA - PARADOURO REST.",
         "3885ddf8-f0ac-4468-98ab-97a248e29150": "GRUPO ROTA - TRANSPORTADORA"
     }
