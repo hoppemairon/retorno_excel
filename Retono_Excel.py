@@ -179,6 +179,7 @@ if st.session_state.df_ret is not None:
             "GRUPO ROTA - CRISTAL": "7a078786-1d9e-4433-9d63-8dfc58130b5f",
             "GRUPO ROTA - PORTO ALEGRE": "73a32cc3-d7ac-48d7-91d7-9046045d0bd7",
             "GRUPO ROTA - PARADOURO REST.": "cad79622-124a-4dc0-9408-7da5227576f0",
+            "GRUPO ROTA - GRAVATAI": "bf308d74-c97f-42e9-98c8-ef14d0ddad2d",
             "GRUPO ROTA - TRANSPORTADORA": "3885ddf8-f0ac-4468-98ab-97a248e29150"
         }
 
