@@ -179,20 +179,41 @@ if st.session_state.df_ret is not None:
             "GRUPO ROTA - CRISTAL": "7a078786-1d9e-4433-9d63-8dfc58130b5f",
             "GRUPO ROTA - PORTO ALEGRE": "73a32cc3-d7ac-48d7-91d7-9046045d0bd7",
             "GRUPO ROTA - PARADOURO REST.": "cad79622-124a-4dc0-9408-7da5227576f0",
+            "GRUPO ROTA - GRAVATAI": "bf308d74-c97f-42e9-98c8-ef14d0ddad2d",
             "GRUPO ROTA - TRANSPORTADORA": "3885ddf8-f0ac-4468-98ab-97a248e29150"
         }
 
         empresa_nome = st.selectbox("Selecione a empresa (MR):", list(EMPRESAS_MR.keys()))
         id_empresa = EMPRESAS_MR[empresa_nome]
+        
+        # Seletor de anos
+        anos_opcoes = st.multiselect(
+            "Selecione os anos para buscar:",
+            options=[2025, 2026],
+            default=[2025, 2026]
+        )
+        anos_str = ",".join(map(str, anos_opcoes))
 
         api_url = os.getenv("API_MR_URL")
         chave_api = os.getenv("API_MR_KEY")
 
         if st.button("🔄 Buscar dados da MR"):
-            df_api_mr = buscar_lancamentos_api(ids_empresa=id_empresa, anos="2025")
+            if not anos_opcoes:
+                st.error("⚠️ Selecione pelo menos um ano para buscar os dados.")
+            else:
+                with st.spinner("Buscando dados da API MR..."):
+                    df_api_mr = buscar_lancamentos_api(ids_empresa=id_empresa, anos=anos_str)
 
-            if df_api_mr.empty or "data" not in df_api_mr.columns or "valor" not in df_api_mr.columns:
-                st.warning("⚠️ Nenhum dado útil retornado da API da MR ou estrutura inesperada.")
+            # Debug: Mostrar informações sobre o DataFrame retornado
+            st.info(f"📊 DataFrame retornado: {len(df_api_mr)} linhas")
+            if not df_api_mr.empty:
+                st.info(f"📋 Colunas disponíveis: {', '.join(df_api_mr.columns.tolist())}")
+            
+            if df_api_mr.empty:
+                st.warning("⚠️ Nenhum dado retornado da API da MR. Verifique se há lançamentos para esta empresa no ano de 2025.")
+            elif "data" not in df_api_mr.columns or "valor" not in df_api_mr.columns:
+                st.warning(f"⚠️ Estrutura inesperada. Colunas esperadas: 'data', 'valor'. Colunas recebidas: {', '.join(df_api_mr.columns.tolist())}")
+                st.dataframe(df_api_mr.head(), use_container_width=True)
             else:
                 st.success(f"{len(df_api_mr)} registros carregados da MR para a empresa selecionada.")
                 #st.dataframe(df_api_mr, use_container_width=True)

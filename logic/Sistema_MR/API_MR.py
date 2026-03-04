@@ -159,24 +159,41 @@ def buscar_lancamentos_api(ids_empresa: str, anos: str = "2025") -> pd.DataFrame
 
     for id_empresa in ids_empresa.split(","):
         url = f"{api_url}/api/export/lancamentos/{id_empresa}?anos={anos}"
+        print(f"🔍 Buscando dados para empresa {id_empresa} - URL: {url}")
+        
         response = requests.get(url, headers=headers)
+        print(f"📡 Status da resposta: {response.status_code}")
 
         if response.status_code == 200:
             try:
                 json_response = response.json()
+                print(f"📦 Tipo de resposta: {type(json_response)}")
+                
                 if isinstance(json_response, dict) and "result" in json_response:
                     dados = json_response["result"]
+                    print(f"📊 Tipo de 'result': {type(dados)}, Itens: {len(dados) if isinstance(dados, list) else 'N/A'}")
+                    
                     if isinstance(dados, list):
-                        df_parcial = pd.json_normalize(dados)
-                        todos_dados.append(df_parcial)
+                        if len(dados) > 0:
+                            df_parcial = pd.json_normalize(dados)
+                            print(f"✅ DataFrame criado com {len(df_parcial)} linhas e colunas: {', '.join(df_parcial.columns.tolist())}")
+                            todos_dados.append(df_parcial)
+                        else:
+                            print(f"⚠️ Lista vazia retornada para empresa {id_empresa}")
                 else:
-                    print(f"⚠️ Estrutura inesperada: {json_response}")
+                    print(f"⚠️ Estrutura inesperada. Chaves disponíveis: {json_response.keys() if isinstance(json_response, dict) else 'Não é dict'}")
             except Exception as e:
                 print(f"❌ Erro ao processar JSON da empresa {id_empresa}: {e}")
+                import traceback
+                print(traceback.format_exc())
         else:
-            print(f"❌ Erro HTTP {response.status_code} para empresa {id_empresa}: {response.text}")
+            print(f"❌ Erro HTTP {response.status_code} para empresa {id_empresa}")
+            print(f"📄 Resposta: {response.text[:500]}")  # Primeiros 500 caracteres
 
-    return pd.concat(todos_dados, ignore_index=True) if todos_dados else pd.DataFrame()
+    resultado_final = pd.concat(todos_dados, ignore_index=True) if todos_dados else pd.DataFrame()
+    print(f"🎯 Retornando DataFrame final com {len(resultado_final)} linhas")
+    
+    return resultado_final
 
 def buscar_transferencias_api(ids_empresa: str, anos: str = "2025") -> pd.DataFrame:
     """
