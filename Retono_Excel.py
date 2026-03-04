@@ -185,29 +185,18 @@ if st.session_state.df_ret is not None:
 
         empresa_nome = st.selectbox("Selecione a empresa (MR):", list(EMPRESAS_MR.keys()))
         id_empresa = EMPRESAS_MR[empresa_nome]
-        
-        # Seletor de anos
-        anos_opcoes = st.multiselect(
-            "Selecione os anos para buscar:",
-            options=[2025, 2026],
-            default=[2025, 2026]
-        )
-        anos_str = ",".join(map(str, anos_opcoes))
 
         api_url = os.getenv("API_MR_URL")
         chave_api = os.getenv("API_MR_KEY")
 
         if st.button("🔄 Buscar dados da MR"):
-            if not anos_opcoes:
-                st.error("⚠️ Selecione pelo menos um ano para buscar os dados.")
-            else:
-                with st.spinner("Buscando dados da API MR..."):
-                    df_api_mr = buscar_lancamentos_api(ids_empresa=id_empresa, anos=anos_str)
+            with st.spinner("Buscando dados da API MR..."):
+                df_api_mr = buscar_lancamentos_api(ids_empresa=id_empresa, anos="2025,2026")
 
             # Debug: Mostrar informações sobre o DataFrame retornado
-            st.info(f"📊 DataFrame retornado: {len(df_api_mr)} linhas")
-            if not df_api_mr.empty:
-                st.info(f"📋 Colunas disponíveis: {', '.join(df_api_mr.columns.tolist())}")
+            #st.info(f"📊 DataFrame retornado: {len(df_api_mr)} linhas")
+            #if not df_api_mr.empty:
+            #    st.info(f"📋 Colunas disponíveis: {', '.join(df_api_mr.columns.tolist())}")
             
             if df_api_mr.empty:
                 st.warning("⚠️ Nenhum dado retornado da API da MR. Verifique se há lançamentos para esta empresa no ano de 2025.")
