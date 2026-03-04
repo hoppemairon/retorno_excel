@@ -190,10 +190,19 @@ if st.session_state.df_ret is not None:
         chave_api = os.getenv("API_MR_KEY")
 
         if st.button("🔄 Buscar dados da MR"):
-            df_api_mr = buscar_lancamentos_api(ids_empresa=id_empresa, anos="2025")
+            with st.spinner("Buscando dados da API MR..."):
+                df_api_mr = buscar_lancamentos_api(ids_empresa=id_empresa, anos="2025,2026")
 
-            if df_api_mr.empty or "data" not in df_api_mr.columns or "valor" not in df_api_mr.columns:
-                st.warning("⚠️ Nenhum dado útil retornado da API da MR ou estrutura inesperada.")
+            # Debug: Mostrar informações sobre o DataFrame retornado
+            #st.info(f"📊 DataFrame retornado: {len(df_api_mr)} linhas")
+            #if not df_api_mr.empty:
+            #    st.info(f"📋 Colunas disponíveis: {', '.join(df_api_mr.columns.tolist())}")
+            
+            if df_api_mr.empty:
+                st.warning("⚠️ Nenhum dado retornado da API da MR. Verifique se há lançamentos para esta empresa no ano de 2025.")
+            elif "data" not in df_api_mr.columns or "valor" not in df_api_mr.columns:
+                st.warning(f"⚠️ Estrutura inesperada. Colunas esperadas: 'data', 'valor'. Colunas recebidas: {', '.join(df_api_mr.columns.tolist())}")
+                st.dataframe(df_api_mr.head(), use_container_width=True)
             else:
                 st.success(f"{len(df_api_mr)} registros carregados da MR para a empresa selecionada.")
                 #st.dataframe(df_api_mr, use_container_width=True)
