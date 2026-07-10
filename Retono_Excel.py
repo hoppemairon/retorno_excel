@@ -180,7 +180,8 @@ if st.session_state.df_ret is not None:
             "GRUPO ROTA - PORTO ALEGRE": "73a32cc3-d7ac-48d7-91d7-9046045d0bd7",
             "GRUPO ROTA - PARADOURO REST.": "cad79622-124a-4dc0-9408-7da5227576f0",
             "GRUPO ROTA - GRAVATAI": "bf308d74-c97f-42e9-98c8-ef14d0ddad2d",
-            "GRUPO ROTA - TRANSPORTADORA": "3885ddf8-f0ac-4468-98ab-97a248e29150"
+            "GRUPO ROTA - TRANSPORTADORA": "3885ddf8-f0ac-4468-98ab-97a248e29150",
+            "GRUPO ROTA - PROTASIO": "fb3db4cb-742b-4583-aaff-c6faa66c0605"
         }
 
         empresa_nome = st.selectbox("Selecione a empresa (MR):", list(EMPRESAS_MR.keys()))
