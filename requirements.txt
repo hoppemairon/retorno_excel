@@ -1,5 +1,8 @@
 streamlit==1.45.0
 streamlit_authenticator==0.4.2
+# pyarrow 25 causa segfault no Streamlit (mimalloc 3.3 / apache/arrow#50471).
+# Remover o pin quando o Arrow lançar o 25.x corrigido.
+pyarrow==24.0.0
 pandas==2.2.3
 numpy==2.2.5
 openpyxl==3.1.5
