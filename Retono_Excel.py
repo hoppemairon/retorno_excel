@@ -15,7 +15,7 @@ from logic.Sistema_MR.API_MR import buscar_lancamentos_api
 st.set_page_config(page_title="Leitor CNAB240 .RET", layout="wide")
 st.title("📄 Leitor de Arquivo CNAB240 (.RET)")
 
-st.markdown("Faça o upload de um arquivo `.RET` (CNAB240) para extrair os dados de **pagamentos (Segmento J)** e gerar um arquivo Excel.")
+st.markdown("Faça o upload de um arquivo `.RET` (CNAB240) para extrair os dados de **pagamentos (Segmento J — boletos) e transferências PIX/TED (Segmento A)** e gerar um arquivo Excel.")
 
 # Estado da sessão
 if "df_ret" not in st.session_state:
@@ -128,6 +128,25 @@ def ler_cnab240_segmento_j(conteudo_arquivo):
                 'Descrição': descricao_confirmacao
             })
 
+        # Segmento A: transferências (PIX/TED/crédito em conta)
+        elif len(linha) >= 232 and linha[13] == 'A':
+            nome_favorecido = linha[43:73].strip()
+            data_pagamento = linha[93:101]
+            valor_pago = linha[119:134].strip()
+            codigo_pagamento = linha[230:235].strip()
+            descricao_confirmacao = codigo_ocorrencias.get(codigo_pagamento, codigo_pagamento)
+
+            data_formatada = f"{data_pagamento[0:2]}/{data_pagamento[2:4]}/{data_pagamento[4:8]}"
+            valor_formatado = int(valor_pago) / 100 if valor_pago.isdigit() else 0
+
+            registros.append({
+                'Favorecido': nome_favorecido,
+                'Data Pagamento': data_formatada,
+                'Valor Pago (R$)': f"{valor_formatado:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+                'Codigo':  codigo_pagamento,
+                'Descrição': descricao_confirmacao
+            })
+
     return pd.DataFrame(registros)
 
 # Uploader com key dinâmica
@@ -146,7 +165,7 @@ if uploaded_file:
         st.success(f"{len(df)} pagamentos encontrados.")
         st.session_state.df_ret = df
     else:
-        st.warning("❌ Nenhum pagamento (Segmento J) foi encontrado neste arquivo.")
+        st.warning("❌ Nenhum pagamento (Segmento J ou A) foi encontrado neste arquivo.")
 
 # Exibição
 if st.session_state.df_ret is not None:
