@@ -101,6 +101,10 @@ def ler_cnab240_segmento_j(conteudo_arquivo):
     registros = []
 
     for linha in conteudo_arquivo.splitlines():
+        # Segmento J-52: registro complementar (pagador/beneficiário), não é pagamento
+        if len(linha) >= 150 and linha[13] == 'J' and linha[17:19] == '52' and not linha[17:61].isdigit():
+            continue
+
         if len(linha) >= 150 and linha[13] == 'J':
             nome_favorecido = linha[61:90].strip()
             data_pagamento = linha[91:100]
